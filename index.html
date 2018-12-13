@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Simple Snake game</title>
+	<script type="text/javascript" src='js/snake.js'></script>
+	<style>
+		body {
+			text-align: center;
+			background-color: #455A64;
+		}
+	</style>
+</head>
+<body>
+	<canvas id='canv'></canvas>
+	<script>
+		let canvas = document.getElementById('canv');
+		canvas.width = 800;
+		canvas.height = 800;
+		let game = new Snake.Game(canvas, {
+			food_color: '#81C784',
+			snake_color: '#ef5350',
+			block_resolution: 32
+		});
+	</script>
+</body>
+</html>

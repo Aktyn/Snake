@@ -1,0 +1,22 @@
+{
+  "name": "snake",
+  "version": "1.0.0",
+  "description": "Simple browser snake game",
+  "main": "ts/snake.ts",
+  "scripts": {
+    "start": "tsc -p ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Aktyn/Snake.git"
+  },
+  "author": "Aktyn",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/Aktyn/Snake/issues"
+  },
+  "homepage": "https://github.com/Aktyn/Snake#readme",
+  "devDependencies": {
+    "typescript": "^3.2.2"
+  }
+}
