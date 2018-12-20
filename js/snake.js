@@ -4,14 +4,15 @@
 var Snake;
 (function (Snake) {
     const SHADOW_OFFSET = 3;
+    const MAX_NON_LINEAR_SPEED = 250;
     const defaultSettings = {
         block_resolution: 32,
         //just like chessboard grid - two colors needed
         block_color_light: '#607D8B',
         block_color_dark: '#546E7A',
-        snake_color: '#f55',
+        snake_color: '#ef5350',
         snake_line_thickness: 0.25,
-        food_color: '#5f5',
+        food_color: '#81C784',
         food_scale: 0.66,
         foods_count: 5,
         help_text: 'Use arrows to control snake.\nPress enter to start the game.',
@@ -36,18 +37,18 @@ var Snake;
         return color;
     }
     class Game {
-        constructor(canvas, user_settings) {
+        constructor(canvas, user_settings, onOver) {
             this.settings = defaultSettings;
             this.running = false;
             this.speed = 0;
             this.timer = 0;
-            this.steering = 0; //-1 => left; 1 => right
-            //TODO - smooth transition between those states accoring to current speed
+            this.steering = []; //-1 => left; 1 => right
             this.linear_moving = false;
             this.foods = [];
             this.settings = defaultSettings;
             if (user_settings)
                 Object.assign(this.settings, user_settings);
+            this.onGameOver = onOver;
             this.width = canvas.getBoundingClientRect().width;
             this.height = canvas.getBoundingClientRect().height;
             this.grid_w = (this.width / this.settings.block_resolution) | 0;
@@ -79,10 +80,12 @@ var Snake;
         onKey(e) {
             if (e.keyCode === 13 && this.running === false)
                 this.run();
-            if (e.keyCode === 37 || e.keyCode == 65)
-                this.steering = -1;
-            else if (e.keyCode === 39 || e.keyCode === 68)
-                this.steering = 1;
+            if (this.steering.length < 3) {
+                if (e.keyCode === 37 || e.keyCode == 65)
+                    this.steering.push(-1);
+                else if (e.keyCode === 39 || e.keyCode === 68)
+                    this.steering.push(1);
+            }
             if (e.keyCode >= 37 && e.keyCode <= 40) //arrow keys
                 e.preventDefault();
         }
@@ -90,7 +93,7 @@ var Snake;
             this.running = true;
             this.speed = this.settings.step_times[0];
             this.drawGrid();
-            this.steering = 0;
+            this.steering = [];
             this.timer = 0;
             this.linear_moving = false;
             //this.step_index = 0;
@@ -111,7 +114,8 @@ var Snake;
         gameOver() {
             this.running = false;
             this.drawText(this.settings.game_over_text);
-            //TODO - stage two with discordbot
+            if (this.onGameOver)
+                this.onGameOver();
         }
         update(dt) {
             //redrawing grid around current snake position and it's tail
@@ -120,21 +124,23 @@ var Snake;
             if ((this.time_to_next_step -= dt) < 0) {
                 if (this.step()) {
                     this.drawGrid();
+                    this.drawScore();
                     this.drawPlayer();
                     this.drawFoods(0);
                 }
                 let speed_level = Math.min(this.settings.step_times.length - 1, (this.timer / this.settings.acceleration_interval) | 0);
                 this.speed = this.settings.step_times[speed_level];
                 this.time_to_next_step += this.speed;
-                if (this.speed < 300)
+                if (this.speed <= MAX_NON_LINEAR_SPEED)
                     this.linear_moving = true;
             }
             else {
                 let step_factor = 1.0 - this.time_to_next_step / this.speed;
-                if (step_factor <= 0.66 && this.steering !== 0) {
-                    this.player.turn(this.steering);
-                    this.steering = 0;
+                if (step_factor <= 0.5 && this.steering.length > 0 && this.player.canTurn()) {
+                    this.player.turn(this.steering.shift());
+                    //this.steering = 0;
                 }
+                this.drawScore();
                 this.drawFoods(dt);
                 this.drawPlayer(step_factor);
             }
@@ -209,6 +215,14 @@ var Snake;
                 this.drawCircle(food.x, food.y, r, this.settings.food_color);
             }
         }
+        drawScore() {
+            this.drawBlock(0, 0);
+            this.drawBlock(1, 0);
+            this.ctx.fillStyle = '#fff';
+            this.ctx.font = `${10}px Helvetica`;
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(this.player.segments.length.toString(), this.settings.block_resolution / 2, this.settings.block_resolution / 2);
+        }
         drawHelp() {
             this.drawText(this.settings.help_text);
         }
@@ -236,21 +250,23 @@ var Snake;
         }
         drawPlayerLayer(transition_factor, color, offsetTop) {
             //calculating head coords
-            let next_block = this.player.getNextBlock();
             var move_factor, tail_factor;
-            let rot_factor = Math.pow(transition_factor, 0.25);
             if (this.linear_moving) {
                 move_factor = transition_factor;
                 tail_factor = transition_factor;
             }
             else {
-                move_factor = Math.pow(transition_factor, 2);
-                tail_factor = Math.pow(transition_factor, 0.5);
+                var speed_factor = this.speed === 0 ? 0 : (this.speed - MAX_NON_LINEAR_SPEED) /
+                    (this.settings.step_times[0] - MAX_NON_LINEAR_SPEED);
+                move_factor = Math.pow(transition_factor, 1 + speed_factor);
+                tail_factor = Math.pow(transition_factor, 1 - speed_factor * 0.5);
             }
+            let next_block = this.player.getNextBlock();
             let px = mix(next_block.x, this.player.pos.x, move_factor);
             let py = mix(next_block.y, this.player.pos.y, move_factor);
             let xx = this.blockC(px);
             let yy = this.blockC(py);
+            let rot_factor = Math.pow(transition_factor, 0.25);
             //let xx = this.settings.block_resolution * (this.player.pos.x+0.5);
             //let yy = this.settings.block_resolution * (this.player.pos.y+0.5);
             ///////////////////////////////////////////////////////////////////////////////////
@@ -358,8 +374,11 @@ var Snake;
             this.turned = false;
             this.saved_rot = this.getRot();
         }
-        turn(dir) {
-            if (this.turned)
+        canTurn() {
+            return !this.turned;
+        }
+        turn(dir = 0) {
+            if (!this.canTurn())
                 return;
             this.turned = true;
             if (dir === -1) {
@@ -395,6 +414,14 @@ var Snake;
                 }
             }
         }
+        /*updateRotation() {
+            switch(this.direction) {
+                case Direction.up:		this.rot = 0;	break;
+                case Direction.down:	this.rot = Math.PI;	break;
+                case Direction.left:	this.rot = -Math.PI/2;	break;
+                case Direction.right:	this.rot = Math.PI/2;	break;
+            }
+        }*/
         getRot() {
             switch (this.direction) {
                 case Direction.up: return 0;
